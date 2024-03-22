@@ -14,14 +14,14 @@ from utils import get_conv_out_dim
 
 
 def xavier_weights(model):
-    """ Initialize the weights of a PyTorch model using the Xavier initialization """
+    """ Initialize the weights of a PyTorch model using the Xavier initialization (normal distribution) """
     for n, p in model.named_parameters():
         if p.dim() > 1:
             torch.nn.init.xavier_normal_(p)
 
 
 def kaiming_weights(model):
-    """ Initialize the weights of a PyTorch model using the Kaiming initialization """
+    """ Initialize the weights of a PyTorch model using the Kaiming initialization (normal distribution) """
     for n, p in model.named_parameters():
         if p.dim() > 1:
             torch.nn.init.kaiming_normal_(p)
@@ -155,22 +155,25 @@ class ResNet(nn.Module):
         self.conv1 = nn.Conv2d(input_channels, features_shapes[0], kernel_size=3, stride=1, padding=1)
         self.bn1 = nn.BatchNorm2d(features_shapes[0])
 
-        blocks_list = []
-        in_chs_list = [features_shapes[0]] + features_shapes[:-1]
-        out_chs_list = features_shapes
+        # first module is different as it has the same number of input and output channels
+        blocks_list = [self._create_res_block(features_shapes[0], features_shapes[0], module_list[0], stride=1)]
 
-        # first module
-        blocks_list.append(self._create_res_block(features_shapes[0], features_shapes[0], module_list[0], stride=1))
-
+        # shifting the features shapes to get the output channels of the previous block as the input channels
+        # of the next one
+        in_chs_list = features_shapes[:-1]
+        out_chs_list = features_shapes[1:]
         # the following modules have a stride of 2
-        for in_chs, out_chs, n_block in zip(in_chs_list[1:], out_chs_list[1:], module_list[1:]):
+        for in_chs, out_chs, n_block in zip(in_chs_list, out_chs_list, module_list[1:]):
             blocks_list.append(self._create_res_block(in_chs, out_chs, n_block, stride=2))
         self.res_blocks = nn.ModuleList(blocks_list)
 
         # AvgPooling layer identical to the original ResNet
         self.pooling = nn.AvgPool2d(8)
 
-        n_convs = sum(module_list) * 2 + 1  # number of 3x3 conv
+        n_convs = sum(module_list) * 2 + 1  # number of 3x3 conv in the whole network
+
+        # counting the number of strides in the residual modules (except the first one that is different)
+        # first conv has stride 2 (downsampling the input), then only stride 1
         strides_blocks = []
         for layer in module_list[1:]:
             strides_blocks += [2, 1] + [1, 1] * (layer - 1)
@@ -186,6 +189,8 @@ class ResNet(nn.Module):
 
     def _create_res_block(self, input_channels, out_channels, n_block, stride=1):
         blocks = []
+        # TODO refactor this part to avoid the if statement
+        # only the first block of the module has a stride of 2
         if stride > 1:
             blocks.append(self.block_cls(input_channels, out_channels, stride=2))
         else:
@@ -206,6 +211,20 @@ class ResNet(nn.Module):
         x = x.view(x.size(0), -1)
         x = self.fc3(x)
         return F.softmax(x, dim=1)
+
+
+class PlainNet(ResNet):
+    """ Class used to rename a Plain net identical to a ResNet as a Plain Network. In the case, the network will indeed
+     be built as a ResNet but with the ConvPlainBlock as the residual block. """
+
+    def __init__(self, *args, **kwargs):
+        """ Initialize a PlainNet as a ResNet with ConvPlainBlock as the residual block """
+        if "block_type" in kwargs and kwargs["block_type"] != "ConvPlainBlock":
+            raise ValueError(f"Expected block_type='ConvPlainBlock' for a PlainNet, got {kwargs['block_type']}.")
+
+        # in case the block type is not specified
+        kwargs["block_type"] = "ConvPlainBlock"
+        super().__init__(*args, **kwargs)  # ResNet constructor is sufficient
 
 
 class LeNet5(nn.Module):
