@@ -9,7 +9,7 @@ from torch import nn
 import torch.nn.functional as F
 
 from layers import conv_layer, mlp_layer, linear_layer
-from residuals import LinResBlock, ConvResBlock, BottleNeckBlock, ConvPlainBlock
+from residuals import LinResBlock, ConvResBlock
 from utils import get_conv_out_dim
 
 
@@ -119,9 +119,9 @@ class ResNet(nn.Module):
             Number of channels of the input images
         n_classes : int
             Number of classes to predict
-        block_type : str | class
-            Type of residual block to use. Can be ConvResBlock or BottleNeckBlock for a ResNet per se. ConvPlainBlock
-            is a
+        block_type : class
+            The class of the residual block to use. It must be a subclass of torch.nn.Module and implement a forward
+            method. Default is ConvResBlock.
         module_list : list
             Number of residual blocks for each module of the network. It must be a list of the same length as
             `features_shapes` and the number of module. A module is a sequence of residual blocks with the same
@@ -140,7 +140,7 @@ class ResNet(nn.Module):
         super().__init__()
 
         # TODO : update the check of the block type
-        self.block_cls = _check_block_type(block_type)
+        self.block_cls = block_type
         if module_list is None:
             module_list = [2, 2, 2]  # 2 layers for each of the 3 blocks
         if features_shapes is None:
@@ -253,14 +253,3 @@ class LeNet5(nn.Module):
         x = self.fc3(x)
 
         return F.softmax(x, dim=1)
-
-
-def _check_block_type(block_type):
-    if isinstance(block_type, str) and block_type in ["BottleNeckBlock", "ConvResBlock", "ConvPlainBlock"]:
-        block_type = globals()[block_type]
-
-    # at this step, block_type should be a valid class
-    if not inspect.isclass(block_type) or block_type not in [BottleNeckBlock, ConvResBlock, ConvPlainBlock]:
-        raise ValueError(f"Unknown residual block type: {block_type}.")
-
-    return block_type

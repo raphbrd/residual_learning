@@ -42,7 +42,7 @@ input_size = get_input_size(train_loader)
 resnet20 = ResNet(input_size[1], len(classes),
                   module_list=[3, 3, 3],
                   features_shapes=[16, 32, 64],
-                  block_type="ConvResBlock")
+                  block_type=ConvResBlock)
 if init_weights == "xavier":
     xavier_weights(resnet20)
 elif init_weights == "kaiming":

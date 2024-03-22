@@ -2,10 +2,10 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import torch
 from torch.optim.lr_scheduler import StepLR
-from torch import nn, optim, functional as F
 
 from models import *
 from data import _load_torch_data
+from residuals import ConvResBlockPre, ConvPlainBlock
 from training import CallBacks, Stream, Trainer
 from utils import get_input_size, count_parameters
 from viz import plot_training_results
@@ -28,18 +28,23 @@ lenet = LeNet5(input_size[1], len(classes), input_size[-1])
 plain20 = ResNet(input_size[1], len(classes),
                  module_list=[3, 3, 3],
                  features_shapes=[16, 32, 64],
-                 block_type="ConvPlainBlock")
+                 block_type=ConvPlainBlock)
 resnet20 = ResNet(input_size[1], len(classes),
                   module_list=[3, 3, 3],
                   features_shapes=[16, 32, 64],
-                  block_type="ConvResBlock")
+                  block_type=ConvResBlock)
+resnet20_pre = ResNet(input_size[1], len(classes),
+                      module_list=[3, 3, 3],
+                      features_shapes=[16, 32, 64],
+                      block_type=ConvResBlockPre)
 resnet38 = ResNet(input_size[1], len(classes),
                   module_list=[6, 6, 6],
                   features_shapes=[16, 32, 64],
-                  block_type="ConvResBlock")
+                  block_type=ConvResBlock)
 print(f"LeNet5 :\t{count_parameters(lenet, verbose=False)[1]}")
 print(f"Plain-20 :\t{count_parameters(plain20, verbose=False)[1]}")
 print(f"ResNet-20 :\t{count_parameters(resnet20, verbose=False)[1]}")
+print(f"ResNet-20 pre-activated :\t{count_parameters(resnet20_pre, verbose=False)[1]}")
 print(f"ResNet-38 :\t{count_parameters(resnet38, verbose=False)[1]}")
 
 model = lenet
