@@ -9,7 +9,7 @@ from torch import nn
 import torch.nn.functional as F
 
 from layers import conv_layer, mlp_layer, linear_layer
-from residuals import LinResBlock, ConvResBlock
+from residuals import LinResBlock, ConvResBlock, ConvPlainBlock
 from utils import get_conv_out_dim
 
 
@@ -219,11 +219,11 @@ class PlainNet(ResNet):
 
     def __init__(self, *args, **kwargs):
         """ Initialize a PlainNet as a ResNet with ConvPlainBlock as the residual block """
-        if "block_type" in kwargs and kwargs["block_type"] != "ConvPlainBlock":
+        if "block_type" in kwargs and kwargs["block_type"] != ConvPlainBlock:
             raise ValueError(f"Expected block_type='ConvPlainBlock' for a PlainNet, got {kwargs['block_type']}.")
 
         # in case the block type is not specified
-        kwargs["block_type"] = "ConvPlainBlock"
+        kwargs["block_type"] = ConvPlainBlock
         super().__init__(*args, **kwargs)  # ResNet constructor is sufficient
 
 
