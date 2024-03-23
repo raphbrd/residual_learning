@@ -69,7 +69,8 @@ class Stream:
 
     def update_pg_bar(self, n=1):
         """ update the progress bar by n steps """
-        self.progress_bar.update(n)
+        if self.progress_bar is not None:
+            self.progress_bar.update(n)
 
     def set_pg_bar(self, total):
         """ set up the progress bar by instantiating the progress_bar_cls class with the total number of steps

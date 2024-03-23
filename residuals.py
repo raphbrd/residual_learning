@@ -92,12 +92,12 @@ class ConvResBlockPre(nn.Module):
         super(ConvResBlockPre, self).__init__()
 
         self.conv1 = nn.Sequential(
-            nn.BatchNorm2d(output_channels),
+            nn.BatchNorm2d(input_channels),
             nn.ReLU(),
             nn.Conv2d(input_channels, output_channels, kernel_size=3, stride=stride, padding=1)
         )
         self.conv2 = nn.Sequential(
-            nn.BatchNorm2d(output_channels),
+            nn.BatchNorm2d(input_channels),
             nn.ReLU(),
             nn.Conv2d(output_channels, output_channels, kernel_size=3, stride=1, padding=1)
         )
