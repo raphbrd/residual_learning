@@ -140,12 +140,12 @@ class CallBacks:
 
 
 class Trainer:
-    """ Training class with callbacks for a PyTorch model when performing a classification task
+    """ Training class with callbacks (hooks that provide easy console logging) for a PyTorch model
+    when performing a classification task.
 
     The training is performed by looping multiple times over the training data (n_epochs). The validation step is either
-    performed at each batch, at the end of each epoch or not at all (if no validation data is provided). Default is at
-    the end of each epoch, which is the most common practice (unless there is a good reason to look at the model
-    performance at each batch, e.g. when performing specific experiments).
+    performed at the end of each epoch or not at all (if no validation data is provided). This class allows to handle
+    model saving and loading.
     """
 
     def __init__(self, model: nn.Module, optimizer: optim.Optimizer, scheduler: optim.lr_scheduler.LRScheduler = None,
@@ -177,13 +177,14 @@ class Trainer:
         self.device = device
 
         self.save_path = pathlib.Path(save_path) if save_path is not None else None
-        self.model_fname_template = "{model}_{optim}_{dataset}_epo_{epo}.pth"
-        self.csv_fname_template = "{model}_{optim}_{dataset}_output.csv"
+        self.model_fname_template = "{model}{desc}_{optim}_{dataset}_epo_{epo}.pth"
+        self.csv_fname_template = "{model}{desc}_{optim}_{dataset}_output.csv"
 
     def fit(self, train_loader: torch_data.DataLoader, validation_loader: torch_data.DataLoader = None, n_epochs=10,
-            save_epo_state=False) -> pd.DataFrame:
-        """ Run the training loop for the specified number of epochs and return training statistics per
-        batch and per epoch
+            save_epo_state=False, desc=None) -> pd.DataFrame:
+        """ Run the training loop for the specified number of epochs and return training statistics per epoch.
+
+        The output dataframe is saved is the save_path is not None (set in the Trainer constructor).
 
         Parameters
         ----------
@@ -198,6 +199,13 @@ class Trainer:
             If True, the model state is saved at the end of each epoch. If False and Trainer.save_path is None, no
             model state is saved. If False and Trainer.save_path is not None, the model state is saved at the end
             of the last epoch. Default is False.
+        desc: str
+            An optional suffix description to add to the file name if model saving was enabled.
+
+        Returns
+        -------
+        pd.DataFrame
+            A DataFrame with the training and validation statistics (loss, accuracy) and the training time per epoch
         """
         if save_epo_state and self.save_path is None:
             raise ValueError("save_epo_state was to True but save_path is None."
@@ -210,25 +218,20 @@ class Trainer:
             epo_start_time = time.time()
             self._handle_callback("on_train_epoch_start", total=len(train_loader))
 
+            # train and validate the model
             running_epoch = self.train_epoch(train_loader, epoch_idx=epoch)
+            val_epoch = self.validation_step(validation_loader)
+            running_epoch = pd.concat([running_epoch, val_epoch], axis=1, ignore_index=True)
 
-            # TODO refactor validation step : this code block should go into the validation step_Fct
-            # then concatenate the results of the running_epochs over the axis = 1 and append to df_epochs
-            if validation_loader is not None:
-                val_loss, accuracy = self.validation_step(validation_loader)
-                running_epoch["val_loss"] = val_loss
-                running_epoch["val_accuracy"] = accuracy
-            else:
-                running_epoch["val_loss"] = np.nan
-                running_epoch["val_accuracy"] = np.nan
-
+            # if relevant update the learning rate scheduler at the end of each epoch
+            # as recommended in the PyTorch documentation
             if self.scheduler is not None:
                 self.scheduler.step()
 
             # two conditions to save a model : either saving at each epoch is requested or it is the last epoch and
             # save path was specified in the constructor method (which indicates that the user wants to save the model)
             if save_epo_state or (epoch == n_epochs - 1 and self.save_path is not None):
-                self.save_state(get_dataset_name(train_loader), epoch, verbose=True)
+                self.save_state(get_dataset_name(train_loader), epoch, desc=desc, verbose=True)
 
             misc_print = f"lr : {self.scheduler.get_last_lr()[0]}" if self.scheduler is not None else None
             self._handle_callback("on_train_epoch_end", epoch, n_epochs,
@@ -245,6 +248,7 @@ class Trainer:
         if self.save_path is not None:
             fname = self.csv_fname_template.format(
                 model=self.model.__class__.__name__,
+                desc=f"_{desc}" if desc is not None else "",
                 optim=self.optimizer.__class__.__name__,
                 dataset=get_dataset_name(train_loader),
             )
@@ -260,7 +264,6 @@ class Trainer:
         running_loss, accuracy = 0, 0
 
         for x, y in train_loader:
-            # calls hooks like this one
             self._handle_callback("on_train_batch_start")
 
             self.optimizer.zero_grad()
@@ -287,8 +290,15 @@ class Trainer:
         })
 
     def validation_step(self, validation_loader: torch_data.DataLoader) -> tuple[float, float]:
-        test_loss, correct = self.run_test(validation_loader)
-        return test_loss, correct
+        """ Evaluate the model on the validation step if the validation loader is not None. This is usually done
+        at the end of each epoch. """
+        val_res = pd.DataFrame({"val_loss": np.nan, "val_accuracy": np.nan}, index=[0])
+        if validation_loader is not None:
+            val_loss, correct = self.run_test(validation_loader)
+            val_res["val_loss"] = val_loss
+            val_res["val_accuracy"] = correct
+
+        return val_res
 
     def run_test(self, test_loader: torch_data.DataLoader) -> tuple[float, float]:
         """ Run the model on the test set and return the average loss and the accuracy. The model is set to eval
@@ -310,7 +320,20 @@ class Trainer:
         return test_loss, correct
 
     def run_test_per_class(self, test_loader: torch_data.DataLoader) -> pd.DataFrame:
-        """ Run the model on the test set and return the average loss and accuracy per class. """
+        """ Run the model on the test set and return the average loss and accuracy per class.
+
+        This method set the model to the eval mode.
+
+        Parameters
+        ----------
+        test_loader : torch.utils.data.DataLoader
+            Test data loader
+
+        Returns
+        -------
+        pd.DataFrame
+            A DataFrame with the classes, accuracy, cross-entropy loss and the number of instances per class
+        """
         self.model.eval()
 
         classes = get_classes_labels(test_loader.dataset)
@@ -344,12 +367,13 @@ class Trainer:
 
         return predictions
 
-    def save_state(self, dataset_name: str, epoch: int, verbose=False) -> None:
+    def save_state(self, dataset_name: str, epoch: int, desc=None, verbose=False) -> None:
         # TODO add a parameter to specify the directory where to save the model
         # TODO add a identifier on the model training: epoch, dataset, major hyperparameters, etc.
         # TODO add epochs and loss / criterion in the saved data
         fname = self.model_fname_template.format(
             model=self.model.__class__.__name__,
+            desc=f"_{desc}" if desc is not None else "",
             optim=self.optimizer.__class__.__name__,
             dataset=dataset_name,
             epo=epoch + 1
@@ -368,15 +392,39 @@ class Trainer:
     @classmethod
     def load_state(cls, load_path: str | pathlib.Path, fname: str, model: nn.Module, optimizer: optim.Optimizer,
                    return_trainer=False, **trainer_kwargs) -> Trainer | tuple[nn.Module, optim.Optimizer, dict]:
-        """ Load the state of the model at a specific epoch. The file is supposed to be saved in the same directory as
-        the one specified in the constructor method (Trainer.save_path). """
+        """ Load the model and optimizer states from a saved state. The classes of the model and the optimizer should
+        match the ones used to save the model state.
 
+        Parameters
+        ----------
+        load_path : str | pathlib.Path
+            The path to the directory where the model state is saved
+        fname : str
+            Filename of the saved model state
+        model : torch.nn.Module
+            The model to load the state into (should be of the same class as the saved model)
+        optimizer : torch.optim.Optimizer
+            The optimizer to load the state into (should be of the same class as the saved optimizer)
+        return_trainer : bool
+            If True, return a Trainer object with the loaded model and optimizer. If False, return the model, the
+            optimizer and the checkpoint dictionary. Default is False.
+        trainer_kwargs : dict
+            Additional arguments to pass to the Trainer constructor. Used only if return_trainer is True.
+
+        Returns
+        -------
+        Trainer | tuple[nn.Module, optim.Optimizer, dict]
+            If return_trainer is True, return a Trainer object with the loaded model and optimizer. If False, return
+            a tuple of the model, the optimizer and the checkpoint dictionary.
+        """
+
+        # ensure the path is a Pathlib object
         if isinstance(load_path, str):
             load_path = pathlib.Path(load_path)
-        elif not isinstance(load_path, pathlib.Path):
+        if not isinstance(load_path, pathlib.Path):
             raise ValueError("load_path should be a string or a pathlib.Path object.")
 
-        checkpoint = torch.load(load_path / fname)
+        checkpoint = torch.load(load_path / fname, mmap=device)
 
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
@@ -390,7 +438,19 @@ class Trainer:
 
         return model, optimizer, checkpoint
 
-    def _handle_callback(self, callback_name, *args, **kwargs):
+    def _handle_callback(self, callback_name: str, *args, **kwargs):
+        """ Call the callback methods if they are defined in the CallBacks object. Those methods provide a way to
+        log messages during specific stages of the training.
+
+        Parameters
+        ----------
+        callback_name : str
+            Name of the method to call
+        args : list
+            Positional arguments to pass to the callback method
+        kwargs : dict
+            Keyword arguments to pass to the callback method
+        """
         if callback_name not in ALLOWED_CALLBACKS:
             raise ValueError(f"Callback '{callback_name}' not allowed. Allowed methods are: {ALLOWED_CALLBACKS}")
 

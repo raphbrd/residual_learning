@@ -2,12 +2,14 @@ import argparse
 import os
 
 import matplotlib.pyplot as plt
+import pandas as pd
 import torch
 from torch.optim.lr_scheduler import StepLR
 from torch import nn, optim, functional as F
 
 from models import *
 from data import _load_torch_data
+from residuals import ConvResBlockPre
 from training import CallBacks, Stream, Trainer
 from utils import get_input_size
 from viz import plot_training_results
@@ -64,7 +66,18 @@ plt.show()
 
 test_loss, accuracy = trainer.run_test(test_loader)
 print(test_loss, accuracy)
-out = trainer.run_test_per_class(test_loader)
+out_per_class = trainer.run_test_per_class(test_loader)
+last_row = pd.DataFrame({
+    "classes": "all",
+    "accuracy": accuracy,
+    "loss": test_loss,
+    "n_instances": len(test_loader.dataset)
+}, index=[0])
+out_per_class = pd.concat([out_per_class, last_row], ignore_index=True)
+print(out_per_class)
+print("Training error :", round((1 - training_out.iloc[-1]["train_accuracy"]) * 100, 4), sep="\t")
+print("Test error :", round((1 - out_per_class[out_per_class.classes == "all"]["accuracy"]) * 100, 4), sep="\t")
+
 if path is not None:
-    out.to_csv(path + "/restuls_test_per_class_plain38.csv")
-print(out)
+    training_out.to_csv(path + "/training_results.csv")
+    out_per_class.to_csv(path + "/results_test_per_class.csv")
