@@ -47,7 +47,7 @@ print(f"ResNet-20 :\t{count_parameters(resnet20, verbose=False)[1]}")
 print(f"ResNet-20 pre-activated :\t{count_parameters(resnet20_pre, verbose=False)[1]}")
 print(f"ResNet-38 :\t{count_parameters(resnet38, verbose=False)[1]}")
 
-model = lenet
+model = resnet20_pre
 
 if init_weights == "xavier":
     xavier_weights(model)
@@ -59,7 +59,7 @@ optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_dec
 scheduler = StepLR(optimizer, step_size=40, gamma=0.1)
 criterion = nn.CrossEntropyLoss()
 
-trainer = Trainer(lenet, optimizer, scheduler, criterion, callbacks=CallBacks(Stream()),
+trainer = Trainer(model, optimizer, scheduler, criterion, callbacks=CallBacks(Stream()),
                   device=torch.device("mps"), save_path=path)
 training_out = trainer.fit(train_loader, validation_loader, n_epochs=n_epochs, save_epo_state=False)
 
