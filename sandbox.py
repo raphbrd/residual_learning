@@ -25,31 +25,17 @@ train_loader, validation_loader, test_loader, classes = _load_torch_data(
     val_size=val_size)
 
 input_size = get_input_size(train_loader)
-lenet = LeNet5(input_size[1], len(classes), input_size[-1])
-# plain20 = ResNet(input_size[1], len(classes),
-#                  module_list=[3, 3, 3],
-#                  features_shapes=[16, 32, 64],
-#                  block_type=ConvPlainBlock)
-resnet20 = ResNet(input_size[1], len(classes),
-                  module_list=[3, 3, 3],
-                  features_shapes=[16, 32, 64],
-                  block_type=ConvResBlock)
-# resnet20_pre = ResNet(input_size[1], len(classes),
-#                       module_list=[3, 3, 3],
-#                       features_shapes=[16, 32, 64],
-#                       block_type=ConvResBlockPre)
-# resnet38 = ResNet(input_size[1], len(classes),
-#                   module_list=[6, 6, 6],
-#                   features_shapes=[16, 32, 64],
-#                   block_type=ConvResBlock)
-print(f"LeNet5 :\t{count_parameters(lenet, verbose=False)[1]}")
-# print(f"Plain-20 :\t{count_parameters(plain20, verbose=False)[1]}")
-print(f"ResNet-20 :\t{count_parameters(resnet20, verbose=False)[1]}")
-# print(f"ResNet-20 pre-activated :\t{count_parameters(resnet20_pre, verbose=False)[1]}")
-# print(f"ResNet-38 :\t{count_parameters(resnet38, verbose=False)[1]}")
+desc = "38"  # for the name of the saved files
+modules = [6, 6, 6]
+features_shapes = [16, 32, 64]
+plain = PlainNet(input_size[1], len(classes), module_list=modules, features_shapes=features_shapes)
+resnet = ResNet(input_size[1], len(classes), module_list=modules, features_shapes=features_shapes,
+                block_type=ConvResBlock)
+print(f"Plain-{desc} :\t{count_parameters(plain, verbose=False)[1]} params.")
+print(f"ResNet-{desc} :\t{count_parameters(resnet, verbose=False)[1]} params.")
 
 # selecting the model to train here :
-model = resnet20
+model = plain
 
 if init_weights == "xavier":
     xavier_weights(model)
@@ -57,26 +43,49 @@ elif init_weights == "kaiming":
     kaiming_weights(model)
 
 optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=1e-4)
-# optimizer = torch.optim.Adam(model.parameters(), lr=0.1, betas=(0.9, 0.999), weight_decay=1e-4)
 scheduler = StepLR(optimizer, step_size=40, gamma=0.1)
 criterion = nn.CrossEntropyLoss()
 
 trainer = Trainer(model, optimizer, scheduler, criterion, callbacks=CallBacks(Stream()),
                   device=torch.device("mps"), save_path=path)
-training_out = trainer.fit(train_loader, validation_loader, n_epochs=n_epochs, save_epo_state=True)
+training_out = trainer.fit(train_loader, validation_loader, n_epochs=n_epochs, save_epo_state=True, desc=desc)
 
 fig = plot_training_results(training_out)
-if path is not None:
-    fig.savefig(path + "/training_results.png")
-plt.show()
+fig.savefig(path + f"/{model.__class__.__name__}{desc}_training_results.png")
 
 test_loss, accuracy = trainer.run_test(test_loader)
-print(test_loss, accuracy)
 out = trainer.run_test_per_class(test_loader)
-print(out)
 last_row = pd.DataFrame(
     {"classes": "all", "accuracy": accuracy, "loss": test_loss, "n_instances": len(test_loader.dataset)}, index=[0])
 out = pd.concat([out, last_row], ignore_index=True)
+out.to_csv(path + f"/{model.__class__.__name__}{desc}_results_test_per_class.csv")
 
-if path is not None:
-    out.to_csv(path + "/results_test_per_class.csv")
+print("done.")
+
+# selecting the model to train here :
+model = resnet
+
+if init_weights == "xavier":
+    xavier_weights(model)
+elif init_weights == "kaiming":
+    kaiming_weights(model)
+
+optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=1e-4)
+scheduler = StepLR(optimizer, step_size=40, gamma=0.1)
+criterion = nn.CrossEntropyLoss()
+
+trainer = Trainer(model, optimizer, scheduler, criterion, callbacks=CallBacks(Stream()),
+                  device=torch.device("mps"), save_path=path)
+training_out = trainer.fit(train_loader, validation_loader, n_epochs=n_epochs, save_epo_state=True, desc=desc)
+
+fig = plot_training_results(training_out)
+fig.savefig(path + f"/{model.__class__.__name__}{desc}_training_results.png")
+
+test_loss, accuracy = trainer.run_test(test_loader)
+out = trainer.run_test_per_class(test_loader)
+last_row = pd.DataFrame(
+    {"classes": "all", "accuracy": accuracy, "loss": test_loss, "n_instances": len(test_loader.dataset)}, index=[0])
+out = pd.concat([out, last_row], ignore_index=True)
+out.to_csv(path + f"/{model.__class__.__name__}{desc}_results_test_per_class.csv")
+
+print("done.")

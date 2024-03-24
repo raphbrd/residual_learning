@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+import os
 import pathlib
 import time
 
@@ -221,7 +223,7 @@ class Trainer:
             # train and validate the model
             running_epoch = self.train_epoch(train_loader, epoch_idx=epoch)
             val_epoch = self.validation_step(validation_loader)
-            running_epoch = pd.concat([running_epoch, val_epoch], axis=1, ignore_index=True)
+            running_epoch = pd.concat([running_epoch, val_epoch], axis=1)
 
             # if relevant update the learning rate scheduler at the end of each epoch
             # as recommended in the PyTorch documentation
@@ -389,54 +391,39 @@ class Trainer:
         if verbose:
             self._handle_callback("on_save_state", f"Writing model state at {self.save_path / fname}")
 
-    @classmethod
-    def load_state(cls, load_path: str | pathlib.Path, fname: str, model: nn.Module, optimizer: optim.Optimizer,
-                   return_trainer=False, **trainer_kwargs) -> Trainer | tuple[nn.Module, optim.Optimizer, dict]:
+    def load_state(self, fname: str) -> tuple[nn.Module, optim.Optimizer, dict]:
         """ Load the model and optimizer states from a saved state. The classes of the model and the optimizer should
         match the ones used to save the model state.
 
         Parameters
         ----------
-        load_path : str | pathlib.Path
-            The path to the directory where the model state is saved
         fname : str
             Filename of the saved model state
-        model : torch.nn.Module
-            The model to load the state into (should be of the same class as the saved model)
-        optimizer : torch.optim.Optimizer
-            The optimizer to load the state into (should be of the same class as the saved optimizer)
-        return_trainer : bool
-            If True, return a Trainer object with the loaded model and optimizer. If False, return the model, the
-            optimizer and the checkpoint dictionary. Default is False.
-        trainer_kwargs : dict
-            Additional arguments to pass to the Trainer constructor. Used only if return_trainer is True.
 
         Returns
         -------
-        Trainer | tuple[nn.Module, optim.Optimizer, dict]
-            If return_trainer is True, return a Trainer object with the loaded model and optimizer. If False, return
-            a tuple of the model, the optimizer and the checkpoint dictionary.
+        tuple[nn.Module, optim.Optimizer, dict]
+            A tuple of the model, the optimizer and the checkpoint dictionary.
         """
 
         # ensure the path is a Pathlib object
-        if isinstance(load_path, str):
-            load_path = pathlib.Path(load_path)
-        if not isinstance(load_path, pathlib.Path):
-            raise ValueError("load_path should be a string or a pathlib.Path object.")
+        if not isinstance(fname, str):
+            raise ValueError("The filename name should be a string.")
 
-        checkpoint = torch.load(load_path / fname, mmap=device)
+        # loading on the cpu because some model are trained on a GPU with MPS backend and other with a CUDA backend
+        checkpoint = torch.load(fname, map_location=torch.device('cpu'))
 
-        model.load_state_dict(checkpoint['model_state_dict'])
-        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        self.model.load_state_dict(checkpoint['model_state_dict'], strict=False)
+        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+
+        # moving the model to the current Trainer device
+        self.model.to(self.device)
 
         # cleaning the checkpoint dictionary
         del checkpoint['model_state_dict']
         del checkpoint['optimizer_state_dict']
 
-        if return_trainer:
-            return cls(model, optimizer, **trainer_kwargs)
-
-        return model, optimizer, checkpoint
+        return self.model, self.optimizer, checkpoint
 
     def _handle_callback(self, callback_name: str, *args, **kwargs):
         """ Call the callback methods if they are defined in the CallBacks object. Those methods provide a way to

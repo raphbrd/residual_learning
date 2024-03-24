@@ -52,14 +52,12 @@ def plot_training_results(training_out, figsize=(12, 6), tight_layout=True) -> p
     sns.lineplot(data=training_out, x='epoch', y='val_accuracy', ax=ax[1], label="Validation accuracy")
 
     max_epo = training_out["epoch"].max()
-    ax[0].set_title("Loss per epoch")
-    ax[0].set_ylabel("Loss")
+    ax[0].set_ylabel("Loss (cross-entropy)")
     ax[0].set_xlim(1, max_epo)
-    ax[0].set_xticks(range(1, max_epo + 1, 5 if max_epo > 15 else 1))
-    ax[1].set_title("Accuracy per epoch")
-    ax[1].set_ylabel("Accuracy")
+    ax[0].set_xticks(range(5, max_epo + 1, 5 if max_epo > 15 else 1))
+    ax[1].set_ylabel("Accuracy (%)")
     ax[1].set_xlim(1, max_epo)
-    ax[1].set_xticks(range(1, max_epo + 1, 5 if max_epo > 15 else 1))
+    ax[1].set_xticks(range(5, max_epo + 1, 5 if max_epo > 15 else 1))
 
     if tight_layout:
         fig.tight_layout()
