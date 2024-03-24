@@ -12,6 +12,7 @@ from torch import nn, optim
 from tqdm import tqdm
 
 from data import get_classes_labels
+from models import set_grad_analysis
 
 # to simplify the handling of the callbacks (= function to log messages during the training,
 # either in the console or in a streamlit app), the allowed methods are hard-coded here
@@ -24,6 +25,43 @@ ALLOWED_CALLBACKS = [
     "on_train_epoch_end",
     "on_save_state"
 ]
+
+
+def analyze_gradients(model: nn.Module, train_loader: torch_data.DataLoader, criterion=nn.CrossEntropyLoss(),
+                      device="cpu"):
+    """ Analyse the gradients of the model by running the model on the training data and storing the gradients
+    of the model parameters.
+
+    This method is useful to check if the gradients are exploding or vanishing during the training.
+
+    Parameters
+    ----------
+    model: torch.nn.Module
+    train_loader : torch.utils.data.DataLoader
+    criterion : torch.nn._WeightedLoss
+    device : str | torch.device
+        Device to use. Default is "cpu". Should match the device of the model.
+
+    Returns
+    -------
+    list
+        A list of tuples (layer name, module, input gradients, output gradients)
+    """
+    model.train()
+    model.zero_grad()
+
+    # register the hooks to store the gradients
+    grads = []
+    set_grad_analysis(model, grads)
+
+    inputs, targets = next(iter(train_loader))
+
+    x, y = inputs.to(device), targets.to(device)
+    outputs = model(x)
+    loss = criterion(outputs, y)
+    loss.backward()
+
+    return grads
 
 
 def get_dataset_name(loader):
@@ -179,11 +217,11 @@ class Trainer:
         self.device = device
 
         self.save_path = pathlib.Path(save_path) if save_path is not None else None
-        self.model_fname_template = "{model}{desc}_{optim}_{dataset}_epo_{epo}.pth"
+        self.model_fname_template = "{model}{desc}_{optim}_{dataset}_epo_{epo}.pt"
         self.csv_fname_template = "{model}{desc}_{optim}_{dataset}_output.csv"
 
     def fit(self, train_loader: torch_data.DataLoader, validation_loader: torch_data.DataLoader = None, n_epochs=10,
-            save_epo_state=False, desc=None) -> pd.DataFrame:
+            save_epo_state=False, save_grads=False, desc=None) -> pd.DataFrame:
         """ Run the training loop for the specified number of epochs and return training statistics per epoch.
 
         The output dataframe is saved is the save_path is not None (set in the Trainer constructor).
@@ -201,6 +239,8 @@ class Trainer:
             If True, the model state is saved at the end of each epoch. If False and Trainer.save_path is None, no
             model state is saved. If False and Trainer.save_path is not None, the model state is saved at the end
             of the last epoch. Default is False.
+        save_grads : bool
+            When save_epo_state is True, whether to also save the gradients of the model parameters. Default is False.
         desc: str
             An optional suffix description to add to the file name if model saving was enabled.
 
@@ -233,7 +273,7 @@ class Trainer:
             # two conditions to save a model : either saving at each epoch is requested or it is the last epoch and
             # save path was specified in the constructor method (which indicates that the user wants to save the model)
             if save_epo_state or (epoch == n_epochs - 1 and self.save_path is not None):
-                self.save_state(get_dataset_name(train_loader), epoch, desc=desc, verbose=True)
+                self.save_state(get_dataset_name(train_loader), epoch, desc=desc, grads=save_grads, verbose=True)
 
             misc_print = f"lr : {self.scheduler.get_last_lr()[0]}" if self.scheduler is not None else None
             self._handle_callback("on_train_epoch_end", epoch, n_epochs,
@@ -369,10 +409,7 @@ class Trainer:
 
         return predictions
 
-    def save_state(self, dataset_name: str, epoch: int, desc=None, verbose=False) -> None:
-        # TODO add a parameter to specify the directory where to save the model
-        # TODO add a identifier on the model training: epoch, dataset, major hyperparameters, etc.
-        # TODO add epochs and loss / criterion in the saved data
+    def save_state(self, dataset_name: str, epoch: int, desc=None, grads=None, verbose=False) -> None:
         fname = self.model_fname_template.format(
             model=self.model.__class__.__name__,
             desc=f"_{desc}" if desc is not None else "",
@@ -380,6 +417,7 @@ class Trainer:
             dataset=dataset_name,
             epo=epoch + 1
         )
+
         torch.save({
             'dataset_name': dataset_name,
             'epoch': epoch,
@@ -387,7 +425,10 @@ class Trainer:
             'optimizer_name': self.optimizer.__class__.__name__,
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
+            # @see https://discuss.pytorch.org/t/how-to-save-grad-values-after-every-batch/108583
+            'grads': {n: p.grad for n, p in self.model.named_parameters()} if grads is not None else None
         }, self.save_path / fname)
+
         if verbose:
             self._handle_callback("on_save_state", f"Writing model state at {self.save_path / fname}")
 

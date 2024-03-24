@@ -64,28 +64,34 @@ class DatasetFactory:
 
     transforms = {
         "MNIST_train": v2.Compose([
-            v2.ToTensor(),
+            v2.ToImage(),
+            v2.ToDtype(torch.float32, scale=True),
             v2.Normalize(MNIST_MEAN, MNIST_STD),
         ]),
         "MNIST_test": v2.Compose([
-            v2.ToTensor(),
+            v2.ToImage(),
+            v2.ToDtype(torch.float32, scale=True),
             v2.Normalize(MNIST_MEAN, MNIST_STD),
         ]),
         "CIFAR10_train": v2.Compose([
             v2.RandomCrop(32, padding=4),
             v2.RandomHorizontalFlip(),
-            v2.ToTensor(),
+            v2.ToImage(),
+            v2.ToDtype(torch.float32, scale=True),
             v2.Normalize(CIFAR10_MEAN, CIFAR10_STD)
         ]),
         "CIFAR10_test": v2.Compose([
-            v2.ToTensor(),
+            v2.ToImage(),
+            v2.ToDtype(torch.float32, scale=True),
             v2.Normalize(CIFAR10_MEAN, CIFAR10_STD)
         ]),
         "SVHN_train": v2.Compose([
-            v2.ToTensor(),
+            v2.ToImage(),
+            v2.ToDtype(torch.float32, scale=True),
         ]),
         "SVHN_test": v2.Compose([
-            v2.ToTensor(),
+            v2.ToImage(),
+            v2.ToDtype(torch.float32, scale=True),
         ])
     }
 

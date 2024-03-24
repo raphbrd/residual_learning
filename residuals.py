@@ -51,16 +51,11 @@ class ConvResBlock(nn.Module):
         """
         super(ConvResBlock, self).__init__()
 
-        self.conv1 = nn.Sequential(
-            nn.Conv2d(input_channels, output_channels, kernel_size=3, stride=stride, padding=1),
-            nn.BatchNorm2d(output_channels),
-            nn.ReLU()
-        )
-        self.conv2 = nn.Sequential(
-            nn.Conv2d(output_channels, output_channels, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(output_channels)
-            # the ReLU is after the concatenation of the skip-connection and the residual function
-        )
+        self.conv1 = nn.Conv2d(input_channels, output_channels, kernel_size=3, stride=stride, padding=1)
+        self.bn1 = nn.BatchNorm2d(output_channels)
+
+        self.conv2 = nn.Conv2d(output_channels, output_channels, kernel_size=3, stride=1, padding=1)
+        self.bn2 = nn.BatchNorm2d(output_channels)
 
         self.skip_proj = None  # down / up-sampling if needed for the skip-connection
         if stride != 1 or input_channels != output_channels:
@@ -71,7 +66,9 @@ class ConvResBlock(nn.Module):
     def forward(self, x):
         id_mapping = x
         x = self.conv1(x)
+        x = F.relu(self.bn1(x))
         x = self.conv2(x)
+        x = self.bn2(x)
         if self.skip_proj is not None:
             id_mapping = self.skip_proj(id_mapping)
         x += id_mapping
@@ -91,16 +88,11 @@ class ConvResBlockPre(nn.Module):
         """
         super(ConvResBlockPre, self).__init__()
 
-        self.conv1 = nn.Sequential(
-            nn.BatchNorm2d(input_channels),
-            nn.ReLU(),
-            nn.Conv2d(input_channels, output_channels, kernel_size=3, stride=stride, padding=1)
-        )
-        self.conv2 = nn.Sequential(
-            nn.BatchNorm2d(output_channels),
-            nn.ReLU(),
-            nn.Conv2d(output_channels, output_channels, kernel_size=3, stride=1, padding=1)
-        )
+        self.conv1 = nn.Conv2d(input_channels, output_channels, kernel_size=3, stride=stride, padding=1)
+        self.bn1 = nn.BatchNorm2d(output_channels)
+
+        self.conv2 = nn.Conv2d(output_channels, output_channels, kernel_size=3, stride=1, padding=1)
+        self.bn2 = nn.BatchNorm2d(output_channels)
 
         self.skip_proj = None  # down / up-sampling if needed for the skip-connection
         if stride != 1 or input_channels != output_channels:
@@ -110,7 +102,9 @@ class ConvResBlockPre(nn.Module):
 
     def forward(self, x):
         id_mapping = x
+        x = F.relu(self.bn1(x))
         x = self.conv1(x)
+        x = F.relu(self.bn2(x))
         x = self.conv2(x)
         if self.skip_proj is not None:
             id_mapping = self.skip_proj(id_mapping)
@@ -131,20 +125,17 @@ class ConvPlainBlock(nn.Module):
         """
         super(ConvPlainBlock, self).__init__()
 
-        self.conv1 = nn.Sequential(
-            nn.Conv2d(input_channels, output_channels, kernel_size=3, stride=stride, padding=1),
-            nn.BatchNorm2d(output_channels),
-            nn.ReLU()
-        )
-        self.conv2 = nn.Sequential(
-            nn.Conv2d(output_channels, output_channels, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(output_channels)
-        )
+        self.conv1 = nn.Conv2d(input_channels, output_channels, kernel_size=3, stride=stride, padding=1)
+        self.bn1 = nn.BatchNorm2d(output_channels)
+
+        self.conv2 = nn.Conv2d(output_channels, output_channels, kernel_size=3, stride=1, padding=1)
+        self.bn2 = nn.BatchNorm2d(output_channels)
 
     def forward(self, x):
         x = self.conv1(x)
+        x = F.relu(self.bn1(x))
         x = self.conv2(x)
-
+        x = self.bn2(x)
         return F.relu(x)
 
 

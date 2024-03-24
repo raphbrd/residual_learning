@@ -13,6 +13,48 @@ from residuals import LinResBlock, ConvResBlock, ConvPlainBlock
 from utils import get_conv_out_dim
 
 
+def set_grad_analysis(model: nn.Module, grads: list) -> list[torch.utils.hooks.RemovableHandle]:
+    """ Register a hook to analyze the gradients of the model during the backward pass.
+
+    Only set the hook on the Conv2d layers of the model.
+
+    Parameters
+    ----------
+    model : torch.nn.Module
+        The model to analyze
+    grads : list
+        The list to store the gradients of the model during the backward pass
+
+    Returns
+    -------
+    list
+        A list of handles used to remove the hooks with the `remove_grad_analysis` function
+    """
+
+    handles = []
+
+    def hook_wrapper(name):
+        def hook_fn(module, grad_input, grad_output):
+            grads.append((name, module, grad_input, grad_output))
+
+        return hook_fn
+
+    # name of the layers, useful to identify the layers of the residual blocks
+    names = [name for name, _ in model.named_modules()]
+    for name, layer in zip(names, model.modules()):
+        if isinstance(layer, nn.Conv2d):
+            handle = layer.register_full_backward_hook(hook_wrapper(name))
+            handles.append(handle)
+
+    return handles
+
+
+def remove_grad_analysis(handles):
+    """ Remove the hooks used to analyze the gradients of the model during the backward pass """
+    for handle in handles:
+        handle.remove()
+
+
 def xavier_weights(model):
     """ Initialize the weights of a PyTorch model using the Xavier initialization (normal distribution) """
     for n, p in model.named_parameters():
@@ -137,7 +179,7 @@ class ResNet(nn.Module):
         with 64 output channels. The input images have 3 channels and the network must predict 10 classes.
         >>> resnet = ResNet(input_channels=3,n_classes=10,module_list=[1, 3, 2],features_shapes=[16, 32, 64])
         """
-        super().__init__()
+        super(ResNet, self).__init__()
 
         # TODO : update the check of the block type
         self.block_cls = block_type
@@ -224,7 +266,7 @@ class PlainNet(ResNet):
 
         # in case the block type is not specified
         kwargs["block_type"] = ConvPlainBlock
-        super().__init__(*args, **kwargs)  # ResNet constructor is sufficient
+        super(PlainNet, self).__init__(*args, **kwargs)  # ResNet constructor is sufficient
 
 
 class LeNet5(nn.Module):
