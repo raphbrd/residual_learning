@@ -88,11 +88,11 @@ class ConvResBlockPre(nn.Module):
         """
         super(ConvResBlockPre, self).__init__()
 
+        self.bn1 = nn.BatchNorm2d(input_channels)
         self.conv1 = nn.Conv2d(input_channels, output_channels, kernel_size=3, stride=stride, padding=1)
-        self.bn1 = nn.BatchNorm2d(output_channels)
 
-        self.conv2 = nn.Conv2d(output_channels, output_channels, kernel_size=3, stride=1, padding=1)
         self.bn2 = nn.BatchNorm2d(output_channels)
+        self.conv2 = nn.Conv2d(output_channels, output_channels, kernel_size=3, stride=1, padding=1)
 
         self.skip_proj = None  # down / up-sampling if needed for the skip-connection
         if stride != 1 or input_channels != output_channels:
