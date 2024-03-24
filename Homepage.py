@@ -11,7 +11,7 @@ from data import file_list_in_directory
 from models import LeNet5, DeepMLP, ResNet, PlainNet, xavier_weights, kaiming_weights
 from residuals import ConvResBlock, ConvResBlockPre
 from training import Trainer, CallBacks, Stream
-from utils import get_input_size
+from utils import get_input_size, get_device
 from viz import plot_training_results
 from widgets import load_data_st, display_datasets_metrics, set_dataset_sidebar, display_sample_img, select_model, \
     select_optimizer
@@ -19,10 +19,15 @@ from widgets import load_data_st, display_datasets_metrics, set_dataset_sidebar,
 st.set_page_config(page_title="Deep Learning Sandbox", layout="wide")
 st.title('Residual Networks for deep learning')
 
-# TODO : remove MNIST from the list of datasets, it is only useful on the motivation page
-# TODO : add a streamlit input for the data path
 dataset_name, batch_size, validation_size = set_dataset_sidebar(st)
-data_path = '/Users/raphaelbordas/Code/sandbox_deep_learning/data'
+
+data_path = st.text_input("Directory from which to load the data "
+                          "(if the data are not present, it will be downloaded):",
+                          value='/Users/raphaelbordas/Code/sandbox_deep_learning/data')
+if not os.path.exists(data_path):
+    st.error(f"Path {data_path} does not exist. Cannot download or find data there.")
+    data_path = None
+data_load_state = st.info(f'Loading {dataset_name} data (this can take some time...)')
 train_loader, validation_loader, test_loader, classes = load_data_st(data_path, dataset_name, batch_size,
                                                                      validation_size)
 
@@ -36,7 +41,6 @@ st.header("Sandbox for deep learning")
 
 st.subheader(f"Characteristics of the {dataset_name} dataset")
 # Notify the user that the data was successfully loaded.
-data_load_state = st.info(f'Loading {dataset_name} data (this can take some time...)')
 data_load_state.success(f"{dataset_name} Data loaded!")
 
 display_datasets_metrics(st, train_loader, validation_loader, test_loader, classes)
@@ -49,7 +53,7 @@ st.subheader("Training a model on the dataset")
 input_size = get_input_size(train_loader)
 col1, col2 = st.columns(2, gap="large")
 with col1:
-    model = select_model(input_size, len(classes))
+    model = select_model(input_size, len(classes), models=["ResNet", "PlainNet", "LeNet5", "MLP", ])
 
 with col2:
     st.markdown("**Optimizer and training parameters**")
@@ -95,7 +99,7 @@ else:
 
 # 3. Train the model
 trainer = Trainer(model, optimizer, scheduler, criterion, callbacks=CallBacks(Stream(st.write, stqdm)),
-                  device=torch.device("mps"), save_path=save_path)
+                  device=get_device(), save_path=save_path)
 is_training = st.button(f"Train the **{model.__class__.__name__}** model", type="primary")
 if is_training:
     with st.status("Training the model...", expanded=True) as status:
@@ -145,11 +149,3 @@ if load_path is not None:
         st.success("Model setup completed!")
         out = trainer.run_test_per_class(test_loader)
         st.write(out)
-
-# TODO add and test CNN support for ResNets
-# TODO display the results of the test per class, not only the overall accuracy
-
-# TODO set up a new page for gradient analysis of Perceptron (with and without residual connections)
-# TODO allow multiple kind of analysis (e.g. gradient norm, gradient variance, etc.)
-# TODO allow multiple kind of residual connections and ResNets
-# TODO pre-implement classical models (ResNet-18, LeNet-5, etc.) and allow the user to tweak them
