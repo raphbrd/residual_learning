@@ -42,6 +42,15 @@ class UnNormalize(object):
         return tensor
 
 
+def get_device():
+    """ Get the device (CPU or GPU) that is available """
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    elif torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
+
+
 def get_conv_out_dim(input_size, kernel_size, padding, stride):
     """ Compute the dimension of a convolutional layer, assuming the image is squared
 
