@@ -18,7 +18,7 @@ from widgets import select_model, load_data_st, select_optimizer
 st.title("Gradient Analysis of Deep Residual Learning")
 st.markdown("""This is a playground where you can experiment with the gradient analysis of Convolutional Neural 
 Networks (CNNs), with and without residual connections. You can either train a model on the CIFAR-10 dataset and then analyze the gradients, or load a pre-trained model to
-analyze the gradients.""")
+analyze the gradients (selection from the sidebar).""")
 st.info("Gradient analysis is only available for models trained on the CIFAR-10 dataset.")
 page_mode = st.sidebar.selectbox("Choose models to use :", [
     "Train a model with gradient tracking",
@@ -46,7 +46,7 @@ if page_mode == "Train a model with gradient tracking":
                               value="/Users/raphaelbordas/Code/sandbox_deep_learning/projet_dl/derivatives/")
     save_desc = st.text_input("A description to add to the files to distinguish them from other runs (e.g., the number "
                               "of layers or the type of residual blocks)",
-                              value="")
+                              value="with_grads")
     if len(save_desc) > 100:
         save_desc = ""
         st.error(f"The description is too long (max. 100 characters). It will not be saved.")
@@ -60,40 +60,47 @@ if page_mode == "Train a model with gradient tracking":
         training_out = trainer.fit(train_loader, validation_loader, n_epochs=n_epochs, save_epo_state=True,
                                    desc=save_desc, save_grads=True)
 
-    load = st.button("Run gradient analysis", type="primary")
-    if load:
-        checkpoint = torch.load(os.path.join(save_path, "{model}_{desc}_{optim}_{dataset}_epo_{epo}.pt".format(
-            model=model.__class__.__name__,
-            optim=optimizer.__class__.__name__,
-            dataset="CIFAR10",
-            epo=n_epochs,
-            desc=save_desc
-        )))
-        # layers of interest
-        layers = [k for k in checkpoint["grads"].keys() if "conv" in k and "bias" not in k and "skip" not in k]
+    # gradient analysis is only possible if the model has been trained and saved above
+    file = os.path.join(save_path, "{model}_{desc}_{optim}_{dataset}_epo_{epo}.pt".format(
+                model=model.__class__.__name__,
+                optim=optimizer.__class__.__name__,
+                dataset="CIFAR10",
+                epo=n_epochs,
+                desc=save_desc
+            ))
+    if os.path.exists(file):
+        load = st.button("Run gradient analysis", type="primary")
+        if load:
+            checkpoint = torch.load(file)
+            # layers of interest
+            layers = [k for k in checkpoint["grads"].keys() if "conv" in k and "bias" not in k and "skip" not in k]
 
-        grads = pd.DataFrame({
-            "layer": layers,
-            "norm": [np.linalg.norm(checkpoint["grads"][k].cpu().detach().flatten()) for k in layers],
-            "var": [np.var(checkpoint["grads"][k].cpu().detach().flatten().numpy()) for k in layers],
-        })
+            grads = pd.DataFrame({
+                "layer": layers,
+                "norm": [np.linalg.norm(checkpoint["grads"][k].cpu().detach().flatten()) for k in layers],
+                "var": [np.var(checkpoint["grads"][k].cpu().detach().flatten().numpy()) for k in layers],
+            })
 
-        plt.style.use("seaborn-v0_8-talk")
-        sns.set(style="whitegrid")
-        fig, axes = plt.subplots(1, 2, figsize=(12, 5), sharex=False, sharey=False)
-        layers_idx = np.arange(len(layers)) + 1
-        axes[0].plot(layers_idx, grads["norm"], label=model.__class__.__name__)
-        axes[1].plot(layers_idx, grads["var"], label=model.__class__.__name__)
-        axes[1].set_yscale("log")
-        axes[0].legend()
-        axes[1].legend()
-        axes[0].set_ylabel("Gradients L2 norm")
-        axes[1].set_ylabel("Gradients variance (log)")
-        axes[0].set_xlim(0, len(layers) + 1)
-        axes[1].set_xlim(0, len(layers) + 1)
-        fig.supxlabel("Layers")
-        fig.tight_layout()
-        st.pyplot(fig)
+            plt.style.use("seaborn-v0_8-talk")
+            sns.set(style="whitegrid")
+            fig, axes = plt.subplots(1, 2, figsize=(12, 5), sharex=False, sharey=False)
+            layers_idx = np.arange(len(layers)) + 1
+            axes[0].plot(layers_idx, grads["norm"], label=model.__class__.__name__)
+            axes[1].plot(layers_idx, grads["var"], label=model.__class__.__name__)
+            axes[1].set_yscale("log")
+            axes[0].legend()
+            axes[1].legend()
+            axes[0].set_ylabel("Gradients L2 norm")
+            axes[1].set_ylabel("Gradients variance (log)")
+            axes[0].set_xlim(0, len(layers) + 1)
+            axes[1].set_xlim(0, len(layers) + 1)
+            fig.supxlabel("Layers")
+            fig.tight_layout()
+            st.pyplot(fig)
+    else:
+        st.info("Please train the model before running the gradient analysis.")
+        load = st.button("Run gradient analysis", type="primary", disabled=True)
+
 elif page_mode == "Pre-trained models":
     st.header("Gradient analysis of pre-trained models")
     st.write("You can load a pre-trained model and analyze the gradients of the convolutional layers.")
@@ -105,7 +112,7 @@ elif page_mode == "Pre-trained models":
     # - PlainNet-38
 
     col1, col2 = st.columns(2, gap="large")
-    model_size = col1.selectbox("Select the number of layers", [14, 38])
+    model_size = col1.selectbox("Select the number of layers", [14, 20, 38])
     epochs = col2.select_slider("Select at which epoch to look at the gradients", options=[1, 5, 10], value=5)
 
     features = [16, 32, 64]
@@ -113,8 +120,10 @@ elif page_mode == "Pre-trained models":
         modules = [2, 2, 2]
     elif model_size == 38:
         modules = [6, 6, 6]
+    elif model_size == 20:
+        modules = [3, 3, 3]
     else:
-        raise ValueError("Model description must be contains either 14 or 38 layers.")
+        raise ValueError("Model description must be contains either 14, 20 or 38 layers.")
 
     resnet = ResNet(input_size[1], len(classes), module_list=modules, features_shapes=features)
     plain = PlainNet(input_size[1], len(classes), module_list=modules, features_shapes=features)
